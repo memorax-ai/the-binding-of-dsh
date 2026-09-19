@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'codex/**']
 
 permissions:
   contents: read
@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         node: [22.22.3, 24.11.1]
     steps:
       - uses: actions/checkout@v7
@@ -26,3 +26,37 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+
+  upstream:
+    name: Gateway (${{ matrix.os }}, DSH ${{ matrix.dsh }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        dsh: [0.1.5-rc.2, 0.1.6-alpha.2]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: memorax-ai/dsh-harmony
+          ref: cc0a864b1bff02d4eadae50ef20b244637936bd3
+          path: .ci/harmony
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.19.0
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm ci
+        working-directory: .ci/harmony
+      - name: Install isolated upstream
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/upstream"
+          echo '{"private":true}' > "$RUNNER_TEMP/upstream/package.json"
+          npm install --prefix "$RUNNER_TEMP/upstream" --ignore-scripts --no-audit --no-fund "@deepseek-ai/dsh@${{ matrix.dsh }}"
+      - name: Verify native RPC, events and cancellation
+        shell: bash
+        run: node test/upstream.e2e.mjs "$RUNNER_TEMP/upstream" "$GITHUB_WORKSPACE/.ci/harmony/lib/bin.js"

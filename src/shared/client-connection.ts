@@ -22,6 +22,7 @@ export type ClientConnectionHandler = (
 
 export interface ClientConnectionGeneration {
   readonly id: string
+  readonly eventTransport?: 'gateway-v1'
 }
 
 interface ClientSocket {
@@ -90,6 +91,8 @@ interface GenerationWaiter {
 type RpcServerRequest = Extract<ServerRequest, { method: typeof CONNECTION_RPC_METHOD }>
 
 export interface ClientConnectionBindingOptions {
+  nativeEvents?: boolean
+  eventTransport?: 'gateway-v1'
   fetch?: typeof globalThis.fetch
   baseUrl?: () => string
   kind?: 'browser' | 'node'
@@ -314,17 +317,18 @@ export function createClientConnectionBinding(
       opening ??= (async () => {
         const response = await fetch(new URL(CONNECTION_OPEN_PATH, baseUrl()), {
           method: 'POST',
-          ...(kind === undefined ? {} : {
+          ...(kind === undefined && options.nativeEvents !== true ? {} : {
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ kind }),
+            body: JSON.stringify({ kind, eventTransport: options.eventTransport, ...(options.nativeEvents ? { nativeEvents: true } : {}) }),
           }),
           signal,
         })
-        if (!response.ok) throw new Error(`Connection open failed with HTTP ${response.status}`)
-        const body = await response.json() as { id?: unknown }
+        if (!response.ok) throw new Error(`Connection open failed with HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`)
+        const body = await response.json() as { id?: unknown; eventTransport?: unknown }
         if (typeof body.id !== 'string' || body.id === '') throw new Error('Connection open returned no peer id')
         const generation: ActiveGeneration = {
           id: body.id,
+          ...(body.eventTransport === 'gateway-v1' ? { eventTransport: 'gateway-v1' as const } : {}),
           closed: false,
           readyWaiters: new Set(),
           outgoing: new Map(),

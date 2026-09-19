@@ -141,6 +141,7 @@ export interface ReverseConnectionHost {
 }
 
 export class HostConnectionBinding implements ReverseConnectionHost {
+  constructor(private readonly nativeEvents = true) {}
   private readonly generations = new Map<string, Generation>()
   private readonly published = new Map<string, ConnectionPeer>()
   private readonly listeners = new Set<(change: PeerChange) => void>()
@@ -196,18 +197,23 @@ export class HostConnectionBinding implements ReverseConnectionHost {
 
   private async open(request: Request): Promise<Response> {
     if (request.method !== 'POST') return new Response('method not allowed', { status: 405 })
+    const options = request.headers.get('content-type')?.startsWith('application/json') === true
+      ? await request.json() as { kind?: unknown; nativeEvents?: unknown; eventTransport?: unknown }
+      : {}
+    if (!this.nativeEvents && options.nativeEvents === true && options.eventTransport !== 'gateway-v1') {
+      return new Response('This host uses Gateway event streams; legacy browser event subscriptions require migration.', { status: 409 })
+    }
     const id = randomUUID()
     this.generations.set(id, {
       id,
-      kind: request.headers.get('content-type')?.startsWith('application/json') === true
-        && (await request.json() as { kind?: unknown }).kind === 'node'
+      kind: options.kind === 'node'
         ? 'node'
         : 'browser',
       failed: false,
       outgoing: new Map(),
       incoming: new Map(),
     })
-    return Response.json({ id })
+    return Response.json({ id, ...(!this.nativeEvents ? { eventTransport: 'gateway-v1' } : {}) })
   }
 
   private receive(generation: Generation, data: unknown): void {

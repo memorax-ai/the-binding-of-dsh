@@ -12,7 +12,7 @@ function variableStatement(node, ts) {
 }
 
 /** @type {import('dsh-harmony').HarmonyPatchDeclaration[]} */
-module.exports = [{
+const legacy = [{
   id: 'bidirectional-connection',
   description: 'Install the complete bidirectional Connection and client module graph integration.',
   patches: [
@@ -230,3 +230,15 @@ module.exports = [{
     },
   ],
 }]
+
+const { findPackageJSON } = require('node:module')
+const { pathToFileURL } = require('node:url')
+const { resolve } = require('node:path')
+const { readFileSync } = require('node:fs')
+const entry = process.env.DSH_HARMONY_ACTIVE_DSH_ENTRY ?? process.env.DSH_HARMONY_DSH_ENTRY
+const manifest = entry && findPackageJSON('@deepseek-ai/dsh', pathToFileURL(resolve(entry)))
+const version = manifest ? JSON.parse(readFileSync(manifest, 'utf8')).version : '0.1.1-rc.2'
+const modern = require('./modern-connection.cjs')(legacy[0].patches)
+const [major, minor, patch] = version.split(/[.-]/).slice(0, 3).map(Number)
+module.exports = major > 0 || minor > 1 || (minor === 1 && patch >= 5) ? modern : legacy
+Object.defineProperty(module.exports, 'modern', { value: modern })

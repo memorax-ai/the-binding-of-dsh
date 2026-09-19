@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { copyFile, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { copyFile, cp, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import test from 'node:test'
 import { runInNewContext } from 'node:vm'
 import { Context } from '@deepseek-ai/cordis'
@@ -173,6 +173,7 @@ test('ships CommonJS patches loadable from node_modules', async (context) => {
   const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
   await mkdir(packageDir, { recursive: true })
   await copyFile(new URL('../package.json', import.meta.url), join(packageDir, 'package.json'))
+  await cp(new URL('../patches', import.meta.url), join(packageDir, 'patches'), { recursive: true })
 
   for (const patch of manifest.dsh.harmony.patches) {
     assert.match(patch, /\.cjs$/)

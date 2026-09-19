@@ -41,6 +41,8 @@ export interface ReverseConnectionHost {
     dispose(): void;
 }
 export declare class HostConnectionBinding implements ReverseConnectionHost {
+    private readonly nativeEvents;
+    constructor(nativeEvents?: boolean);
     private readonly generations;
     private readonly published;
     private readonly listeners;

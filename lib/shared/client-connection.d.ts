@@ -2,6 +2,7 @@ import { type RpcResult } from './protocol.js';
 export type ClientConnectionHandler = (endpoint: string, payload: unknown, signal: AbortSignal) => Promise<RpcResult<unknown>>;
 export interface ClientConnectionGeneration {
     readonly id: string;
+    readonly eventTransport?: 'gateway-v1';
 }
 interface ClientSocket {
     readonly readyState: number;
@@ -21,6 +22,8 @@ export interface ClientConnectionBinding {
     handle(message: unknown, generation: ClientConnectionGeneration | undefined): boolean;
 }
 export interface ClientConnectionBindingOptions {
+    nativeEvents?: boolean;
+    eventTransport?: 'gateway-v1';
     fetch?: typeof globalThis.fetch;
     baseUrl?: () => string;
     kind?: 'browser' | 'node';

@@ -1,5 +1,4 @@
 import { Context } from '@deepseek-ai/cordis'
-import { serverRequestSchema } from '@deepseek-ai/dsh-host-apiproxy/api/rpc.schema'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import type {
   TypertDisposer,
@@ -166,7 +165,8 @@ export class NodePeerClient implements NodePeerClientHandle {
         try {
           const raw = JSON.parse(webSocketText(event.data))
           if (this.connection.handle(raw, generation.connection)) return
-          serverRequestSchema.parse(raw)
+          // Native event frames are not consumed by this standalone RPC peer.
+          if (raw?.type !== 'server-request') throw new Error('Unexpected peer frame')
         } catch (error) {
           console.error('[the-binding-of-dsh] dropping malformed Node peer frame:', error)
         }

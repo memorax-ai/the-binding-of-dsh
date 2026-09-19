@@ -1,6 +1,6 @@
 {
   "name": "the-binding-of-dsh",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Bidirectional DSH Connection and Typert Gateway integration",
   "type": "module",
   "main": "./lib/index.js",
@@ -26,7 +26,11 @@
       "types": "./lib/host/gateway.d.ts",
       "default": "./lib/host/gateway.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./host/modern": {
+      "types": "./lib/host/modern.d.ts",
+      "default": "./lib/host/modern.js"
+    }
   },
   "files": [
     "lib",
@@ -36,13 +40,14 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "npm run build:client && npm run build:host",
+    "build": "npm run build:client && npm run build:host && node scripts/build-legacy.mjs",
     "build:client": "tsdown --config-loader unrun && tsc -p tsconfig.client.build.json",
     "build:host": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "npm run build && node --test test/*.test.ts",
     "check": "npm run typecheck && npm test",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "test:upstream": "node test/upstream.e2e.mjs"
   },
   "engines": {
     "node": "^22.22.3 || >=24.11.1"
@@ -80,11 +85,11 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-api-gateway": ">=0.1.0-rc.8 <0.1.1-0 || >=0.1.1-0",
-    "@deepseek-ai/dsh-client-connection": ">=0.1.0-rc.8 <0.1.1-0 || >=0.1.1-0",
+    "@deepseek-ai/dsh-api-gateway": ">=0.1.0-rc.8 <0.1.1-0 || >=0.1.1-0 || >=0.1.5-0 <0.1.6-0 || >=0.1.6-0 <0.1.7-0",
+    "@deepseek-ai/dsh-client-connection": ">=0.1.0-rc.8 <0.1.1-0 || >=0.1.1-0 || >=0.1.5-0 <0.1.6-0 || >=0.1.6-0 <0.1.7-0",
     "@deepseek-ai/dsh-host-apiproxy": ">=0.1.0-rc.8 <0.1.1-0 || >=0.1.1-0",
-    "@deepseek-ai/dsh-typert-protocol": ">=0.1.0-rc.8 <0.1.1-0 || >=0.1.1-0",
-    "@deepseek-ai/dsh-typert-registry": ">=0.1.0-rc.8 <0.1.1-0 || >=0.1.1-0",
+    "@deepseek-ai/dsh-typert-protocol": ">=0.1.0-rc.8 <0.1.1-0 || >=0.1.1-0 || >=0.1.5-0 <0.1.6-0 || >=0.1.6-0 <0.1.7-0",
+    "@deepseek-ai/dsh-typert-registry": ">=0.1.0-rc.8 <0.1.1-0 || >=0.1.1-0 || >=0.1.5-0 <0.1.6-0 || >=0.1.6-0 <0.1.7-0",
     "dsh-harmony": ">=0.8.6 <0.9.0"
   },
   "peerDependenciesMeta": {
@@ -120,7 +125,7 @@
     "@phenomnomnominal/tsquery": "^6.2.0",
     "@types/node": "^24.10.0",
     "@types/ws": "^8.18.1",
-    "dsh-harmony": "0.8.6",
+    "dsh-harmony": "0.8.11",
     "magic-string": "^0.30.21",
     "semver": "^7.8.5",
     "tsdown": "^0.22.14",

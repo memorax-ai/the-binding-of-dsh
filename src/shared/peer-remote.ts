@@ -1,4 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
+import * as Protocol from '@deepseek-ai/dsh-typert-protocol'
 import type {
   InvocationDescriptor,
   RemoteResult,
@@ -234,14 +235,11 @@ class BoundPeerRemote {
       const result = await this.peer.call('/api', endpoint, { args }, signal)
       if (!token.active) return withdrawn(endpoint)
       if (!result.ok) {
-        return {
-          ok: false,
-          error: {
+        return remoteFailure({
             code: result.error.code,
             message: result.error.message,
             details: isObject(result.error.details) ? result.error.details : {},
-          },
-        }
+        })
       }
       return {
         ok: true,
@@ -331,7 +329,20 @@ function withdrawn(endpoint: string): RemoteResult<never> {
 }
 
 function internalFailure(message: string): RemoteResult<never> {
-  return { ok: false, error: { code: 'internal', message, details: {} } }
+  return remoteFailure({ code: 'internal', message, details: {} })
+}
+
+function remoteFailure(failure: { code: string; message: string; details: object }): RemoteResult<never> {
+  const Constructor = (Protocol as unknown as {
+    RemoteError?: new (code: string, message: string, details: object) => Error
+  }).RemoteError
+  const error = Constructor === undefined ? failure : new Constructor(
+    failure.code === 'internal' ? 'gateway/internal' : failure.code,
+    failure.message,
+    failure.details,
+  )
+  // The Remote error-code registry is extensible; wire codes are owned by the remote service.
+  return { ok: false, error } as RemoteResult<never>
 }
 
 function isObject(value: unknown): value is object {

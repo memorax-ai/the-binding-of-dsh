@@ -1,16 +1,11 @@
 import { Context } from '@deepseek-ai/cordis'
-import {
-  serverRequestSchema,
-  type HostFrame,
-  type MuxFrame,
-  type RpcRequest,
-} from '@deepseek-ai/dsh-host-apiproxy/api'
-import { hostFrameSchema, muxFrameSchema } from '@deepseek-ai/dsh-host-apiproxy/api/events.schema'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import type { TypertDisposer, TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import { createClientConnectionBinding, type ClientConnectionGeneration } from './shared/client-connection.js'
 import { PeerRemoteProjector, type PeerRemoteApi, type TypertRemoteCaller } from './shared/peer-remote.js'
 import { type RpcResult } from './shared/protocol.js'
+import { BrowserRemoteEvents, type RemoteEventHandler, type RemoteEventListener } from './shared/browser-events.js'
+export type { RemoteEventRequest, RemoteEventHandler, RemoteEventListener } from './shared/browser-events.js'
 
 const MUX_PATH = '/api/events.mux'
 const HOST_PATH = '/api/events.host'
@@ -18,9 +13,11 @@ const INTERNAL_BASE = 'http://dsh.internal'
 
 export type BrowserPeerChannel = 'mux' | 'host'
 
-export type BrowserPeerEvent =
-  | { channel: 'mux'; envelope: RpcRequest<MuxFrame> }
-  | { channel: 'host'; envelope: RpcRequest<HostFrame> }
+/** Legacy event envelope. Domain payload types belong to the caller's DSH version. */
+export interface BrowserPeerEvent<T = { type: string; [key: string]: unknown }> {
+  channel: BrowserPeerChannel
+  envelope: { rpcId: string; payload: T }
+}
 
 interface Generation {
   readonly connection: ClientConnectionGeneration
@@ -28,13 +25,16 @@ interface Generation {
   readonly host: WebSocket
   readonly abort: AbortController
   active: boolean
+  events?: BrowserRemoteEvents
 }
 
 export interface BrowserPeerClientOptions {
   readonly baseUrl?: string | URL
   readonly contribution: TypertRemoteContribution
   readonly fetch?: typeof globalThis.fetch
-  readonly createWebSocket?: (url: string, protocol: string) => WebSocket
+  readonly createWebSocket?: (url: string, protocol?: string) => WebSocket
+  /** Opt in to automatic reconnection; consumers must refetch state after onState(true). */
+  readonly reconnectDelayMs?: number
 }
 
 /** Standalone browser owner for one native DSH Connection and both event streams. */
@@ -43,12 +43,18 @@ export class BrowserPeerClient {
   private readonly fetch: typeof globalThis.fetch
   private readonly baseUrl: URL
   private readonly contribution: TypertRemoteContribution
-  private readonly createWebSocket: (url: string, protocol: string) => WebSocket
+  private readonly createWebSocket: (url: string, protocol?: string) => WebSocket
   private readonly connection
   private readonly projector: PeerRemoteProjector
   private readonly caller: TypertRemoteCaller
   private readonly eventListeners = new Set<(event: BrowserPeerEvent) => void>()
   private readonly stateListeners = new Set<(connected: boolean) => void>()
+  private readonly remoteListeners = new Map<string, Set<RemoteEventListener>>()
+  private readonly remoteHandlers = new Map<string, Set<RemoteEventHandler>>()
+  private legacySchemas?: typeof import('./shared/legacy-events.js')
+  private readonly reconnectDelayMs?: number
+  private reconnectTimer?: ReturnType<typeof setTimeout>
+  private stopped = true
   private generation: Generation | undefined
   private mounting: Promise<TypertDisposer> | undefined
   private disposeRemote: TypertDisposer | undefined
@@ -63,8 +69,11 @@ export class BrowserPeerClient {
     const origin = globalThis.location?.origin
     this.baseUrl = new URL(options.baseUrl ?? (origin !== undefined && origin !== 'null' ? origin : INTERNAL_BASE))
     this.contribution = options.contribution
+    this.reconnectDelayMs = options.reconnectDelayMs
     this.createWebSocket = options.createWebSocket ?? ((url, protocol) => new WebSocket(url, protocol))
     this.connection = createClientConnectionBinding({
+      nativeEvents: true,
+      eventTransport: 'gateway-v1',
       fetch: this.fetch,
       baseUrl: () => this.baseUrl.href,
     })
@@ -77,7 +86,35 @@ export class BrowserPeerClient {
     return this.generation?.active === true
   }
 
+  get eventTransport(): 'legacy' | 'gateway-v1' | undefined {
+    return this.generation === undefined ? undefined : this.generation.connection.eventTransport ?? 'legacy'
+  }
+
+  /** Native Gateway notification; event names and arguments are forwarded unchanged. */
+  subscribe(event: string, listener: RemoteEventListener): () => void {
+    const listeners = this.remoteListeners.get(event) ?? new Set()
+    this.remoteListeners.set(event, listeners)
+    listeners.add(listener)
+    return () => { listeners.delete(listener); if (!listeners.size) this.remoteListeners.delete(event) }
+  }
+
+  /** Native Gateway waterfall, with generation-scoped cancellation and automatic replies. */
+  handleEvent(event: string, handler: RemoteEventHandler): () => void {
+    const handlers = this.remoteHandlers.get(event) ?? new Set()
+    this.remoteHandlers.set(event, handlers)
+    handlers.add(handler)
+    return () => { handlers.delete(handler); if (!handlers.size) this.remoteHandlers.delete(event) }
+  }
+
+  /** Open a Gateway stream, e.g. a session subscription; reconnect requires opening it again. */
+  stream(endpoint: string, payload: unknown, signal?: AbortSignal): AsyncIterable<unknown> {
+    if (!this.connected || this.generation?.events === undefined) throw new Error('Gateway events are not connected')
+    return this.generation.events.stream(endpoint, payload, signal)
+  }
+
   connect(signal?: AbortSignal): Promise<void> {
+    this.stopped = false
+    clearTimeout(this.reconnectTimer)
     if (this.connected) return Promise.resolve()
     if (this.connecting !== undefined) return this.connecting
     const opening = new AbortController()
@@ -90,9 +127,10 @@ export class BrowserPeerClient {
     return this.connecting
   }
 
-  onEvent(listener: (event: BrowserPeerEvent) => void): () => void {
-    this.eventListeners.add(listener)
-    return () => this.eventListeners.delete(listener)
+  onEvent<T = BrowserPeerEvent['envelope']['payload']>(listener: (event: BrowserPeerEvent<T>) => void): () => void {
+    const untyped = listener as (event: BrowserPeerEvent) => void
+    this.eventListeners.add(untyped)
+    return () => this.eventListeners.delete(untyped)
   }
 
   onState(listener: (connected: boolean) => void): () => void {
@@ -102,6 +140,8 @@ export class BrowserPeerClient {
   }
 
   async close(): Promise<void> {
+    this.stopped = true
+    clearTimeout(this.reconnectTimer)
     this.opening?.abort(new Error('Browser peer client closed'))
     await this.connecting?.catch(() => undefined)
     this.dropGeneration(new Error('Browser peer client closed'))
@@ -116,10 +156,27 @@ export class BrowserPeerClient {
     this.mounting ??= this.projector.mount(this.ctx, this.contribution)
     this.disposeRemote = await this.mounting
     const connection = await this.connection.open(signal)
+    if (signal.aborted) { this.connection.release(connection); throw signal.reason }
+    if (connection.eventTransport !== 'gateway-v1') {
+      // The bundled decoder has no runtime dependency on the retired API package.
+      try {
+        this.legacySchemas = await import('./shared/legacy-events.js')
+      } catch (error) { this.connection.release(connection); throw error }
+    }
+    let mux: WebSocket | undefined
+    let host: WebSocket
+    try {
+      mux = this.createWebSocket(webSocketUrl(this.baseUrl, MUX_PATH), connection.id)
+      host = this.createWebSocket(webSocketUrl(this.baseUrl, HOST_PATH), connection.id)
+    } catch (error) {
+      mux?.close()
+      this.connection.release(connection)
+      throw error
+    }
     const generation: Generation = {
       connection,
-      mux: this.createWebSocket(webSocketUrl(this.baseUrl, MUX_PATH), connection.id),
-      host: this.createWebSocket(webSocketUrl(this.baseUrl, HOST_PATH), connection.id),
+      mux,
+      host,
       abort: new AbortController(),
       active: false,
     }
@@ -129,9 +186,17 @@ export class BrowserPeerClient {
     this.attach(generation, 'host', generation.host)
     try {
       await Promise.all([
-        waitForOpen(generation.mux, signal),
-        waitForOpen(generation.host, signal),
+        waitForOpen(generation.mux, AbortSignal.any([signal, generation.abort.signal])),
+        waitForOpen(generation.host, AbortSignal.any([signal, generation.abort.signal])),
       ])
+      if (connection.eventTransport === 'gateway-v1') {
+        generation.events = new BrowserRemoteEvents(
+          this.createWebSocket(webSocketUrl(this.baseUrl, '/api/remote.mux')),
+          (endpoint, payload, requestSignal) => this.connection.call('/api', endpoint, payload, requestSignal),
+          this.remoteListeners, this.remoteHandlers, error => this.fail(generation, error),
+        )
+        await generation.events.start(AbortSignal.any([signal, generation.abort.signal]))
+      }
       if (this.generation !== generation || generation.abort.signal.aborted) throw generation.abort.signal.reason
       generation.active = true
       this.emitState(true)
@@ -148,10 +213,12 @@ export class BrowserPeerClient {
         if (typeof event.data !== 'string') throw new Error('binary WebSocket frame')
         const raw = JSON.parse(event.data)
         if (channel === 'host' && this.connection.handle(raw, generation.connection)) return
-        const full = serverRequestSchema.parse(raw)
+        const schemas = this.legacySchemas
+        if (generation.connection.eventTransport === 'gateway-v1' || schemas === undefined) throw new Error('Unexpected legacy event')
+        const full = schemas.serverRequestSchema.parse(raw)
         const peerEvent: BrowserPeerEvent = channel === 'mux'
-          ? { channel, envelope: { rpcId: full.rpcId, payload: muxFrameSchema.parse(full.payload) } }
-          : { channel, envelope: { rpcId: full.rpcId, payload: hostFrameSchema.parse(full.payload) } }
+          ? { channel, envelope: { rpcId: full.rpcId, payload: schemas.muxFrameSchema.parse(full.payload) } }
+          : { channel, envelope: { rpcId: full.rpcId, payload: schemas.hostFrameSchema.parse(full.payload) } }
         for (const listener of this.eventListeners) listener(peerEvent)
       } catch (error) {
         console.error(`[the-binding-of-dsh] dropping malformed ${channel} frame:`, error)
@@ -165,6 +232,13 @@ export class BrowserPeerClient {
   private fail(generation: Generation, reason: Error): void {
     if (this.generation !== generation || generation.abort.signal.aborted) return
     this.dropGeneration(reason)
+    this.scheduleReconnect()
+  }
+
+  private scheduleReconnect(): void {
+    if (this.stopped || this.reconnectDelayMs === undefined) return
+    clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = setTimeout(() => { void this.connect().catch(() => this.scheduleReconnect()) }, Math.max(10, this.reconnectDelayMs))
   }
 
   private dropGeneration(reason: Error): void {
@@ -174,6 +248,7 @@ export class BrowserPeerClient {
     const wasActive = generation.active
     generation.active = false
     generation.abort.abort(reason)
+    generation.events?.dispose(reason)
     this.connection.release(generation.connection)
     generation.mux.close()
     generation.host.close()
@@ -206,7 +281,9 @@ function webSocketUrl(baseUrl: URL, path: string): string {
 }
 
 function waitForOpen(socket: WebSocket, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.reject(signal.reason)
   if (socket.readyState === 1) return Promise.resolve()
+  if (socket.readyState > 1) return Promise.reject(new Error('WebSocket already closed'))
   return new Promise((resolve, reject) => {
     const opened = (): void => finish(resolve)
     const failed = (): void => finish(() => reject(new Error('WebSocket failed before opening')))

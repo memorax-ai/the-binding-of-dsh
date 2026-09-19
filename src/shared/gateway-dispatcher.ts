@@ -631,7 +631,7 @@ export function parseGatewayValue(
     throw new Error(`client api: generated Remote ${endpoint} field ${JSON.stringify(field)} has no strict codec`)
   }
   try {
-    return codec.schema.parse(value)
+    return schemaFor(codec).parse(value)
   } catch (cause) {
     throw new Error(`client api: ${endpoint} rejected ${JSON.stringify(field)}`, { cause })
   }
@@ -647,7 +647,7 @@ function decode(
 ): unknown {
   try {
     if (codec.mode === 'strict') {
-      value = codec.schema.parse(value)
+      value = schemaFor(codec).parse(value)
       if (value === undefined) return value
     }
     assertJsonValue(value, new Set())
@@ -708,4 +708,16 @@ function isPlainObject(value: object): boolean {
 
 function isObject(value: unknown): value is object & Record<PropertyKey, unknown> {
   return (typeof value === 'object' && value !== null) || typeof value === 'function'
+}
+
+// Codecs are immutable generated descriptors. Materialize lazy schemas once per realm.
+const schemas = new WeakMap<object, { parse(value: unknown): unknown }>()
+function schemaFor(codec: object): { parse(value: unknown): unknown } {
+  const cached = schemas.get(codec)
+  if (cached !== undefined) return cached
+  const candidate = codec as { create?: () => { parse(value: unknown): unknown }; schema?: { parse(value: unknown): unknown } }
+  const schema = typeof candidate.create === 'function' ? candidate.create() : candidate.schema
+  if (schema === undefined || typeof schema.parse !== 'function') throw new TypeError('Strict codec has no schema factory or parser')
+  schemas.set(codec, schema)
+  return schema
 }

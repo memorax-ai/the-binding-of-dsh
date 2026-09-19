@@ -1,3 +1,4 @@
+import * as Protocol from '@deepseek-ai/dsh-typert-protocol';
 import { Service } from '@deepseek-ai/cordis';
 import type { Context } from '@deepseek-ai/cordis';
 import { type TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol';
@@ -11,7 +12,7 @@ export declare class HostRemoteService extends Service implements HostPeerRemote
     private readonly projector;
     constructor(ctx: Context);
     for(peer: ConnectionPeer): PeerRemoteApi;
-    $mount(contribution: TypertRemoteContribution): Promise<import("@deepseek-ai/dsh-typert-protocol").TypertDisposer>;
+    $mount(contribution: TypertRemoteContribution): Promise<Protocol.TypertDisposer>;
 }
 declare module '@deepseek-ai/cordis' {
     interface Context {

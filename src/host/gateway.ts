@@ -1,8 +1,8 @@
+import * as Protocol from '@deepseek-ai/dsh-typert-protocol'
 import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
 import {
   remoteMethods,
-  TypertLookupFailure,
   type TypertRemoteContribution,
 } from '@deepseek-ai/dsh-typert-protocol'
 import {
@@ -32,9 +32,15 @@ export function createHostGatewayDispatcher(
   return createGatewayDispatcher(ctx, {
     createError,
     remoteMethods,
-    lookupFailure: error => error instanceof TypertLookupFailure
-      ? error.failure as { code: string; message: string; details: unknown }
-      : undefined,
+    lookupFailure: error => {
+      const protocol = Protocol as unknown as {
+        TypertLookupFailure?: new (...args: never[]) => Error & { failure: { code: string; message: string; details: unknown } }
+        remoteErrorOf?: (error: unknown) => { code: string; message: string; details: unknown } | undefined
+      }
+      if (protocol.remoteErrorOf !== undefined) return protocol.remoteErrorOf(error)
+      return protocol.TypertLookupFailure !== undefined && error instanceof protocol.TypertLookupFailure
+        ? error.failure : undefined
+    },
   })
 }
 
