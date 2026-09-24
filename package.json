@@ -143,7 +143,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/CH4ACKO3/the-binding-of-dsh.git"
+    "url": "git+https://github.com/memorax-ai/the-binding-of-dsh.git"
   },
   "publishConfig": {
     "access": "public"
