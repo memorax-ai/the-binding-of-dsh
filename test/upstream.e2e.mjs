@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync, rmSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -12,6 +13,7 @@ import { BrowserPeerClient } from '../lib/browser-peer-client.js'
 const root = fileURLToPath(new URL('../', import.meta.url))
 const upstream = resolve(process.argv[2])
 const harmony = resolve(process.argv[3] ?? '../dsh-harmony/lib/bin.js')
+const scopeEntry = createRequire(join(upstream, 'node_modules/@deepseek-ai/dsh/package.json')).resolve('@deepseek-ai/dsh-scope')
 const home = mkdtempSync(join(tmpdir(), 'binding-upstream-'))
 const profile = join(home, 'profiles/web')
 const modules = join(profile, 'node_modules')
@@ -21,7 +23,7 @@ const fixture = join(modules, 'binding-probe')
 mkdirSync(fixture)
 writeFileSync(join(fixture, 'package.json'), JSON.stringify({ name: 'binding-probe', version: '1.0.0', type: 'module', main: 'index.js', dsh: { bundle: { patch: './patch.yml' } } }))
 writeFileSync(join(fixture, 'patch.yml'), '- insert:\n    - id: binding-probe\n      name: binding-probe\n      inject: [connection]\n')
-writeFileSync(join(fixture, 'index.js'), `import { scopeTarget } from ${JSON.stringify(pathToFileURL(join(upstream, 'node_modules/@deepseek-ai/dsh-scope/lib/index.js')).href)};
+writeFileSync(join(fixture, 'index.js'), `import { scopeTarget } from ${JSON.stringify(pathToFileURL(scopeEntry).href)};
 export function apply(ctx) {
   let pending;
   for (const action of ['echo', 'reverse', 'peers', 'event', 'waterfall', 'cancel']) ctx.connection.fetch.register({

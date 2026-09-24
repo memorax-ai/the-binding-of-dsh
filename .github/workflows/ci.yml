@@ -57,7 +57,6 @@ jobs:
           mkdir -p "$RUNNER_TEMP/upstream"
           echo '{"private":true}' > "$RUNNER_TEMP/upstream/package.json"
           npm install --prefix "$RUNNER_TEMP/upstream" --ignore-scripts --no-audit --no-fund "@deepseek-ai/dsh@${{ matrix.dsh }}"
-          find "$RUNNER_TEMP/upstream/node_modules" -path '*/@deepseek-ai/dsh-scope/lib/index.js' -print
       - name: Verify native RPC, events and cancellation
         shell: bash
         run: node test/upstream.e2e.mjs "$RUNNER_TEMP/upstream" "$GITHUB_WORKSPACE/.ci/harmony/lib/bin.js"
