@@ -163,6 +163,9 @@ test('accepts supported DSH prereleases as peers', async () => {
     assert.equal(semver.satisfies('0.1.0-rc.9', range), true, name)
     assert.equal(semver.satisfies('0.1.1-rc.2', range), true, name)
     assert.equal(semver.satisfies('1.0.0', range), true, name)
+    if (name !== '@deepseek-ai/dsh-host-apiproxy') {
+      assert.equal(semver.satisfies('0.1.7-rc.2', range), true, name)
+    }
   }
 })
 

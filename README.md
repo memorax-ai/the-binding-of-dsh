@@ -50,7 +50,7 @@ shape. The legacy decoder is bundled separately; modern installations do not
 need `dsh-host-apiproxy`. Domain payload types can be supplied to `onEvent<T>()`
 or `BrowserPeerEvent<T>` using the consumer's legacy DSH types.
 
-On DSH 0.1.5/0.1.6, `eventTransport` is `gateway-v1`. Use `subscribe(event,
+On DSH 0.1.5–0.1.7, `eventTransport` is `gateway-v1`. Use `subscribe(event,
 listener)` for native notifications and `handleEvent(event, handler)` for
 waterfall requests. These preserve upstream event names and arguments;
 `onEvent()` does not synthesize legacy frames on modern hosts.
@@ -80,10 +80,9 @@ state and reopen business streams. Events are not replayed by Binding. `close()`
 stops retries, closes sockets, cancels requests and withdraws the remote contribution.
 Older clients requesting only legacy events still receive HTTP 409 from modern hosts.
 
-Validation (2026-09-19): 31 tests pass with the legacy development baseline and
-Harmony 0.8.11. Isolated DSH 0.1.5-rc.2 and 0.1.6-alpha.2 Host tests pass
+Validation (2026-09-28): 31 tests pass with the legacy development baseline.
+Isolated DSH 0.1.5-rc.2, 0.1.6-alpha.2, and 0.1.7-rc.2 Host tests pass
 forward/reverse RPC, lazy codecs, authentication refusal, Gateway notifications,
-waterfall result/delegation/rejection/cancellation and reconnect. Studio must
-consume these modern APIs before its event-driven UI can claim compatibility.
+waterfall result/delegation/rejection/cancellation and reconnect.
 
 Run `node test/upstream.e2e.mjs <isolated-dsh-root> <harmony-lib-bin-path>` after building to repeat the modern Host test. It creates and removes an isolated profile, without model calls.

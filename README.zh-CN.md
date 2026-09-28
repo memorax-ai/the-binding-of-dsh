@@ -44,7 +44,7 @@ MIT
 `{ channel, envelope: { rpcId, payload } }` 格式；旧版解码器已随包提供，新版安装无需
 `dsh-host-apiproxy`。业务类型可通过 `onEvent<T>()` 或 `BrowserPeerEvent<T>` 指定。
 
-DSH 0.1.5/0.1.6 使用 `gateway-v1`：
+DSH 0.1.5–0.1.7 使用 `gateway-v1`：
 
 - `subscribe(event, listener)`：订阅原生事件，保留事件名和参数。
 - `handleEvent(event, handler)`：处理交互事件，收到 `eventId`、`agentId`、`request` 和 `signal`。
@@ -56,8 +56,8 @@ DSH 0.1.5/0.1.6 使用 `gateway-v1`：
 重连后的 `onState(true)` 需重新获取业务状态、打开业务流；Binding 不重放事件，也不重建 Agent 上下文。
 `close()` 停止重试、关闭通道、取消请求并撤销 Remote 注册。
 
-新版不通过 `onEvent()` 模拟旧事件。Studio 仍需接入这些新接口，才能完成其 UI 兼容。
+新版不通过 `onEvent()` 模拟旧事件。Studio 通过这些原生接口处理会话事件。
 仅支持旧事件的旧版客户端连接新版 Host 时继续收到 HTTP 409，避免误报连接正常。
 
-2026-09-19 验证：31 项测试通过；隔离启动 DSH `0.1.5-rc.2` 和 `0.1.6-alpha.2`，
+2026-09-28 验证：31 项测试通过；隔离启动 DSH `0.1.5-rc.2`、`0.1.6-alpha.2` 和 `0.1.7-rc.2`，
 双向 RPC、鉴权、事件通知、交互应答/委托/异常/取消及重连均通过。完整示例及复测命令见英文 README。
