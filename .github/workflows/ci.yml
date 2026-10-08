@@ -35,13 +35,13 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        dsh: [0.1.5-rc.2, 0.1.6-alpha.2]
+        dsh: [0.1.5-rc.2, 0.1.6-alpha.2, 0.2.0-rc.2]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
         with:
           repository: memorax-ai/dsh-harmony
-          ref: 5fa207af8ddf55b7853d1eb0a28f31de6b2fa118
+          ref: acdc2a15ad71d16aad9c06b70aafeeaadd650cf4
           path: .ci/harmony
       - uses: actions/setup-node@v7
         with:
