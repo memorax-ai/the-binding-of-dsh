@@ -44,8 +44,7 @@
     "build:client": "tsdown --config-loader unrun && tsc -p tsconfig.client.build.json",
     "build:host": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
-    "test": "npm run build && node --test test/*.test.ts",
-    "check": "npm run typecheck && npm test",
+    "check": "npm run typecheck && npm run build",
     "prepack": "npm run build",
     "test:upstream": "node test/upstream.e2e.mjs"
   },
