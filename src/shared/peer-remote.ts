@@ -73,7 +73,22 @@ export class PeerRemoteProjector {
   ): Promise<TypertDisposer> {
     validateContribution(contribution, this.methods)
     const owned = callerCtx.effect(async () => {
-      const disposeRemote = callerCtx.typert.remotes.register(contribution)
+      const disposeRemote = callerCtx.typert.remotes.register({
+        ...contribution,
+        descriptors: contribution.descriptors.map(descriptor => {
+          const endpoint = endpointOf(descriptor)
+          return {
+            ...descriptor,
+            invocation: descriptor.invocation.kind === 'context'
+              ? { ...descriptor.invocation, codec: registryCodec(descriptor.invocation.codec, endpoint, descriptor.invocation.wire) }
+              : descriptor.invocation,
+            parameters: descriptor.parameters.map(parameter => ({
+              ...parameter, codec: registryCodec(parameter.codec, endpoint, parameter.wire),
+            })),
+            result: registryCodec(descriptor.result, endpoint, 'result'),
+          }
+        }),
+      })
       const token: MountToken = { active: true, abort: new AbortController() }
       const endpoints: string[] = []
       try {
@@ -251,6 +266,16 @@ class BoundPeerRemote {
       )
     }
   }
+}
+
+function registryCodec(
+  codec: InvocationDescriptor['result'], endpoint: string, field: string,
+): InvocationDescriptor['result'] {
+  // Older registries require schema.parse even for newer lazy codec factories.
+  if (codec.mode !== 'strict' || ('schema' in codec && codec.schema !== undefined)) return codec
+  return Object.create(codec, {
+    schema: { value: { parse: (value: unknown) => parseGatewayValue(codec, value, endpoint, field) }, enumerable: true },
+  })
 }
 
 function validateContribution(
